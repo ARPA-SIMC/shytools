@@ -1,0 +1,17 @@
+#!/usr/bin/bash
+
+#SBATCH --time=50:00:00
+#SBATCH --partition=net-disk
+##SBATCH --partition=shmem
+#SBATCH --ntasks=1
+##SBATCH --ntasks=24
+#SBATCH --output=LOGS/pre_proc_meteo.job.o%j
+#SBATCH --error=LOGS/pre_proc_meteo.job.e%j
+
+str_date=20181027 
+end_date=20181101
+path="/fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_FORCING/cosmo2I_29oct2018_fc/"
+typ="fc"
+
+time /fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_FORCING/extrct_frc.sh $str_date $end_date $path $typ 
+
