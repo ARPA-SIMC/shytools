@@ -4,10 +4,10 @@ import sys
 from seaoverland import seaoverland
 
 DATA_FILE = sys.argv[1]
-DATA_VAR =["U10M","V10M","TMP","DPT"]
+DATA_VAR =["U10M","V10M","TMP","DPT","PRS"]
 MASK_FILE = sys.argv[2]
 MASK_VAR = "LAND_GDS10_SFC"
-ITERATIONS = 7
+ITERATIONS = 12
 
 def computeSeaOverLand(dataFile, dataVarName, maskFile, maskVarName, iterations):
     """
@@ -30,7 +30,7 @@ def computeSeaOverLand(dataFile, dataVarName, maskFile, maskVarName, iterations)
     mask = np.array(np.broadcast_to(mask, data.shape))  # apply mask to each layer of data
     data = np.ma.array(data=data, mask=mask)
 
-    print type(data.mask)
+    #print type(data.mask)
 
     # flatten every non lat, lon dimension
     oldShape = data.shape

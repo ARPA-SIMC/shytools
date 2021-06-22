@@ -1,7 +1,7 @@
 #!/lhome/mare_exp/anaconda3/envs/shypy/bin/python
-#--------------------------------------------------
-#---- read and plot shyfem regular grid data ------
-#--------------------------------------------------
+#-------------------------------------------
+#---- read and plot unstructured data ------
+#-------------------------------------------
 
 from datetime import datetime
 from netCDF4 import Dataset,num2date
@@ -14,12 +14,12 @@ import numpy as np
 import pandas as pd
 
 #------- create the parser --------------
-parser = argparse.ArgumentParser(description='plot regualar shyfem Netcdf')
+parser = argparse.ArgumentParser(description='plot unstructured Netcdf file')
 
 #------- add argument for the parser -------------
 parser.add_argument('-i','--inp',type=str, help='input NetCDF file')
-parser.add_argument('-tmin',type=str, help='starting time Format: Y-m-d::H:M:S')
-parser.add_argument('-tmax',type=str, help='end time Format: Y-m-d::H:M:S')
+parser.add_argument('-tmin',type=str, help='starting time Format: Y-m-d::H:M')
+parser.add_argument('-tmax',type=str, help='end time Format: Y-m-d::H:M')
 parser.add_argument('-var',type=str,help='variable name')
 parser.add_argument('-name',type=str,help='title of the plot',default=None)
 parser.add_argument('-l','--layer',type=int,help='choose the layer to plot',default=0)
@@ -27,8 +27,8 @@ parser.add_argument('-minv',type=float, help='choose minimum value to display')
 parser.add_argument('-maxv',type=float, help='choose maximum value to display')
 parser.add_argument('-spac',type=float, help='choose the spacing for the plot isolines')
 parser.add_argument('-last',action='store_true', help='plot variable in last layer of each element')
-parser.add_argument('-dued',action='store_true', help='plot 2d variables')
-parser.add_argument('-V','--version',action='version',help='print the version',version='shyRegPlot 1.0 (regular)')
+parser.add_argument('-diff',action='store_true', help='plot a difference')
+parser.add_argument('-V','--version',action='version',help='print the version',version='shyNCplot 1.1 (unstructured)')
 
 #--------- collect info from command line ---------------#
 args=parser.parse_args()
@@ -38,10 +38,11 @@ fname = args.inp
 fin = Dataset(fname, mode='r')
 
 #------ list dimensions name----------------#
-lonname = 'lon'
-latname = 'lat'
+lonname = 'longitude'
+latname = 'latitude'
 timename= 'time'
 levname = 'level'
+el_index= 'element_index'
 varname = args.var
 
 #----------- read variables from Netcdf -------#
@@ -49,18 +50,26 @@ varname = args.var
 lon = fin.variables[lonname][:]
 lat = fin.variables[latname][:]
 dept= fin.variables[levname][:]
+el_in=fin.variables[el_index][:]
 #variables
-if varname=='velocity':
-   var_u = fin.variables['u_velocity'][:]
-   var_v= fin.variables['v_velocity'][:]
-   #----------- compute speed -----------#
-   var=np.sqrt(var_u**2+var_v**2)
-   #------------ variable units -------------#
-   var_unit = fin.variables['u_velocity'].units
+
+if varname == 'velocity':
+  var1 = fin.variables['u_velocity'][:]
+  var2 = fin.variables['v_velocity'][:]
+  #--------- compute speed --------------#
+  var = np.sqrt(var1**2 + var2**2)
+  #------------ variable units -------------#
+  var_unit = fin.variables['u_velocity'].units
 else:
-   var = fin.variables[varname][:]
-   #------------ variable units -------------#
-   var_unit = fin.variables[varname].units
+  var = fin.variables[varname][:]
+  #------------ variable units -------------#
+  var_unit = fin.variables[varname].units
+
+#-------- 0 values to nan -----------#
+if args.last:
+  var = np.where(var == 0,np.nan,var)
+else:
+  var = np.where(var == 0,1.e20,var)
 
 #------------- choose layer -----------#
 lev = args.layer
@@ -77,12 +86,6 @@ t_cal = fin.variables[timename].calendar
 tmin= datetime.strptime(args.tmin,'%Y-%m-%d::%H:%M') 
 tmax= datetime.strptime(args.tmax,'%Y-%m-%d::%H:%M')
 
-#-------- initialize arrays where to store last layer -----------#
-if args.last:
-  vart_u =np.zeros((len(time),len(lat),len(lon)),float)
-  vart_v =np.zeros((len(time),len(lat),len(lon)),float)
-  vart   =np.zeros((len(time),len(lat),len(lon)),float)
-
 #------------ choose the right colorbar ------------- #
 if varname == 'temperature':
   cmap = "cmocean_thermal"
@@ -94,8 +97,10 @@ elif varname == 'total_depth':
 elif varname == 'water_level':
   cmap = "cmocean_balance"
 elif varname == 'velocity':
-#  cmap = "cmocean_matter"
    cmap = "WhiteBlueGreenYellowRed"
+
+if args.diff:
+   cmap = "cmocean_deep"
 
 #----------- close Netcdf reading ------------- #
 fin.close()
@@ -105,7 +110,8 @@ name_exp= args.name
 
 #------------- yearly mean ------------ #
 #ym = ['2010','2011','2012','2013','2014','2015','2016','2017','2018','2019']
-ym=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
+ym=['mean']
+#ym=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
 
 #------------------ time in UTC (maybe need to convert in local time) ----------------------#
 tvalue = num2date(time,units=t_unit,calendar=t_cal)
@@ -124,26 +130,14 @@ for i in range(len(tvalue)):
         break
 
     if args.last:
-      for llat in range(len(lat)):
-         for llon in range(len(lon)):
-           #----------- extract the index of the variable at the bottom layer of each elements ---#
-           v = pd.DataFrame(var[i][:,llat,llon]).apply(pd.Series.last_valid_index)
-           if v[0] is None:
-              vart_u[i][llat][llon]=np.nan
-              vart_v[i][llat][llon]=np.nan
-              vart[i][llat][llon]=np.nan
-              continue
-           vart_u[i][llat][llon]=var_u[i][v[0],llat,llon]
-           vart_v[i][llat][llon]=var_v[i][v[0],llat,llon]
-           vart[i][llat][llon]=var[i][v[0],llat,llon]
-      #-------- mask arrays ---------------------
-      vart_u = np.ma.masked_invalid(vart_u)
-      vart_v = np.ma.masked_invalid(vart_v)
-      vart = np.ma.masked_invalid(vart)
-    elif args.dued:
-      vart = var
-      vart_u = var_u
-      vart_v = var_v
+      #----------- extract the index of the variable at the bottom layer of each elements ---#
+      v=pd.DataFrame(var[i].T).apply(pd.Series.last_valid_index) 
+      vart=np.zeros(len(v),float)
+      for ll in range(len(v)):
+        vart[ll]=var[i,ll,v[ll]]
+      print(var[i])
+      print(vart)
+
 
     ##################### file names ###################
     wks_type='png'
@@ -204,9 +198,9 @@ for i in range(len(tvalue)):
     res.mpGeophysicalLineThicknessF = 1.0       #thickness of outlines
     res.mpGeophysicalLineColor= "Black"         #color of cont. outlines
     res.mpOutlineDrawOrder    = "Draw"          #draw continental outline last
-    res.mpLandFillColor       = "gray43"
+    res.mpLandFillColor       = "gray"
     res.mpOceanFillColor      = "white"
-    res.mpInlandWaterFillColor= "gray43"
+    res.mpInlandWaterFillColor= "gray"
 
     ################# Map attributes (lat/lon grid lines) ############### 
     res.mpGridAndLimbOn       = False           #turn on lat/lon lines
@@ -242,27 +236,23 @@ for i in range(len(tvalue)):
     res.tiMainPosition    = "Center"
     res.tiMainFontHeightF = 0.012
     res.tiMainOffsetYF    = 0.0
-    #---------------- replace ym[i] with str_time[i] if you want actual time of plot ----------#
-    #res.tiMainString        = name_exp+" "+varname+" "+str_time[i]#+" depth = "+str(dept[lev])+" m"
+#    res.tiMainString        = name_exp+" "+varname+" "+str_time[i]+" depth = "+str(dept[lev])+" m"
     res.tiMainString        = name_exp+" "+varname+" "+ym[i]+" depth = "+str(dept[lev])+" m"
     res.tiMainFontThicknessF=5.
 
     res.sfXArray            = lon
     res.sfYArray            = lat
-    if args.last or args.dued:
-      res.sfDataArray         =var[i][:][:]
-    else:
-      res.sfDataArray         =var[i][lev][:][:]
+#   res.sfDataArray         =var[i,:,lev]
 
-    #-------- for unstructured data ----------#
-    #res.sfElementNodes  = el_in
-    #res.sfMissingValueV = 1.e20
-    #res.sfFirstNodeIndex    =1
+    res.sfElementNodes  = el_in
+    res.sfMissingValueV = 1.e20
+    res.sfFirstNodeIndex    =1
 
     res.lbLabelBarOn       = True
     res.lbLabelsOn         = True
     res.lbOrientation       ='horizontal'
     res.lbTitleString      = varname+" ("+var_unit+")"
+#    res.lbTitleString      = "Sea level"+" ("+var_unit+")"
     res.lbTitlePosition    = "Bottom"
     res.lbTitleOffsetF   = -0.1
     res.lbLabelFontHeightF = 0.015
@@ -276,58 +266,13 @@ for i in range(len(tvalue)):
     ################################ make plot ############################
     if  varname == 'water_level':
 
-        plot = Ngl.contour_map(wks,var[i][:],res)
+        plot = Ngl.contour_map(wks,var[i][:]+0.177,res)
     else:
-        if args.last or args.dued:
-           plot = Ngl.contour_map(wks,vart[i][:][:],res)
-        else:
-           plot = Ngl.contour_map(wks,var[i][lev][:][:],res)
-
-    if varname == 'velocity':
-        
-        vres            =Ngl.Resources()
-        vres.nglDraw        =False
-        vres.nglFrame       =False
-        vres.nglMaximize    =True
-        #vres.vcRefLengthF   =0.01
-        vres.vcRefLengthF   =0.03
         if args.last:
-           vres.vcRefMagnitudeF=0.1
+          plot = Ngl.contour_map(wks,vart,res)
         else:
-           vres.vcRefMagnitudeF=0.2
-        #vres.vcGlyphStyle   ="CurlyVector"
-        vres.vcGlyphStyle   ="LineArrow"
-        vres.vcMinDistanceF =0.01
-        vres.vcLineArrowThicknessF=2.0
-        vres.vcLineArrowHeadMinSizeF=0.001
-        vres.vcLineArrowHeadMinSizeF=0.001
-        vres.vcVectorDrawOrder ="postDraw"
-        vres.vcRefAnnoOrthogonalPosF=-0.08
-        vres.vcRefAnnoParallelPosF=0.0
-        vres.vcPositionMode     ="arrowCenter"
-        vres.vfXArray           = lon
-        vres.vfYArray           = lat
-        vres.vcRefAnnoOn        =True
-        vres.vcRefAnnoFontHeightF=0.01
+          plot = Ngl.contour_map(wks,var[i,:,lev],res)
 
-        if args.last or args.dued:
-          stream = Ngl.vector(wks,vart_u[i][:][:],vart_v[i][:][:],vres)
-        else:
-          stream = Ngl.vector(wks,var_u[i][lev][:][:],var_v[i][lev][:][:],vres)
-        Ngl.overlay(plot,stream)
-
-    #################### add position of Seagrass #########################
-    #resb = Ngl.Resources() # polyline mods desired
-    #resb.gsLineColor = "black" # color of lines
-    #resb.gsLineThicknessF = 2.5 # thickness of lines
-    
-    ###################### central position ######################################
-    #ilat = [44.445, 44.445, 44.455, 44.455, 44.445] #define lat points for each line
-    #ilon = [ 12.645, 12.655, 12.655, 12.645, 12.645] # define lon points for each line
-    
-    #draw each line on plot
-    
-    #rega =Ngl.add_polyline(wks,plot,ilon, ilat,resb) #draw line from start point to end point
 
     ###################### draw plot and change frame ##################
     Ngl.draw(plot.base)

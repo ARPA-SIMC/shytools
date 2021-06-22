@@ -8,9 +8,19 @@
 #SBATCH --output=LOGS/pre_proc_mare.job.o%j
 #SBATCH --error=LOGS/pre_proc_mare.job.e%j
 
-str_date=20190831 # ricorda devi mettere la data del giorno prima da quello in cui vuoi iniziare la simulation
-end_date=20200101
-path="/fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_FORCING/longer_roms_12nov2019/"
 
-time /fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_FORCING/extrct_bnd.sh $str_date $end_date $path
+#today=("20201207" "20201201" "20191222")
+today=20191223
+sub=1
+#path="/fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_OPERATIONAL/20201208/"
+
+for i in ${today[@]}
+do
+  #------------ generate directories and indicate path -------------------------#
+
+  mkdir -p /fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_OPERATIONAL/${i}_ocean_an/
+  path="/fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_OPERATIONAL/${i}_ocean_an/"
+
+  time /fs/scratch/mare_exp/jacopo/PRE_PROC/OCEAN_OPERATIONAL/extrct_bnd.sh $today $sub $path
+done
 

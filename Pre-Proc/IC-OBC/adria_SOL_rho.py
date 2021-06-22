@@ -5,10 +5,10 @@ import sys
 from seaoverland import seaoverland
 
 DATA_FILE = sys.argv[1]
-DATA_VAR =["zeta","temp","salt"]
-MASK_FILE = sys.argv[1]
+DATA_VAR =["zeta","temp","salt","u_eastward","v_northward"]
+MASK_FILE = sys.argv[2]
 MASK_VAR = "mask_rho"
-ITERATIONS = 15
+ITERATIONS = 25
 #DATA_FILE="prova.nc"
 
 #os.system('cp '+ str(ORIG_FILE)+' '+str(DATA_FILE))

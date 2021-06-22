@@ -8,10 +8,20 @@
 #SBATCH --output=LOGS/pre_proc_meteo.job.o%j
 #SBATCH --error=LOGS/pre_proc_meteo.job.e%j
 
-str_date=20181027 
-end_date=20181101
-path="/fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_FORCING/cosmo2I_29oct2018_fc/"
-typ="fc"
+#------------------------- array with days variables -----------------------------------------------------------------#
+#today=("20201207" "20201201" "20191222" "20191111" "20190201" "20181028" "20180317" "20171112" "20160615" "20160228")
 
-time /fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_FORCING/extrct_frc.sh $str_date $end_date $path $typ 
+today=20191226
+sub=6
+#path="/fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_OPERATIONAL/shydata/"
+typ="an"
+mod="5M"
 
+for i in ${today[@]}
+do
+   #-------------- generate directories and indicate path --------------------#
+   mkdir -p /fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_OPERATIONAL/${i}_5M_an/
+   path="/fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_OPERATIONAL/${i}_5M_an/" 
+
+   time /fs/scratch/mare_exp/jacopo/PRE_PROC/METEO_OPERATIONAL/extrct_frc.sh $i $sub $path $typ $mod 
+done

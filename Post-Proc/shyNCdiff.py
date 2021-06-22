@@ -1,36 +1,46 @@
-#-------------------------------------------
-#---- read and plot unstructured data ------
-#-------------------------------------------
+#!/lhome/mare_exp/anaconda3/envs/shypy/bin/python                                               
+
+#------------------------------------------------------------
+#---- read, make difference and plot unstructured data ------
+#------------------------------------------------------------
 
 from datetime import datetime
 from netCDF4 import Dataset,num2date
 import argparse
 import cmocean
 import Ngl
-from cftime import utime
+#from cftime import utime
 import sys
 import numpy as np
+import pandas as pd
 
 #------- create the parser --------------
-parser = argparse.ArgumentParser(description='plot unstructured Netcdf file')
+parser = argparse.ArgumentParser(description='plot differences of unstructured Netcdf file')
 
 #------- add argument for the parser -------------
-parser.add_argument('-i','--inp',type=str, help='input NetCDF file')
-parser.add_argument('-tmin',type=str, help='starting time Format: Y-m-d::H:M:S')
-parser.add_argument('-tmax',type=str, help='end time Format: Y-m-d::H:M:S')
+parser.add_argument('-i1','--inp1',type=str, help='input NetCDF file')
+parser.add_argument('-i2','--inp2',type=str, help='input NetCDF file')
+parser.add_argument('-tmin',type=str, help='starting time Format: Y-m-d::H:M')
+parser.add_argument('-tmax',type=str, help='end time Format: Y-m-d::H:M')
 parser.add_argument('-var',type=str,help='variable name')
+parser.add_argument('-name',type=str,help='title of the plot',default=None)
 parser.add_argument('-l','--layer',type=int,help='choose the layer to plot',default=0)
 parser.add_argument('-minv',type=float, help='choose minimum value to display')
 parser.add_argument('-maxv',type=float, help='choose maximum value to display')
 parser.add_argument('-spac',type=float, help='choose the spacing for the plot isolines')
-parser.add_argument('-V','--version',action='version',help='print the version',version='shyNCplot 1.0 (unstructured)')
+parser.add_argument('-last',action='store_true', help='plot variable in last layer of each element')
+parser.add_argument('-V','--version',action='version',help='print the version',version='shyNCdiff 1.1 (unstructured)')
 
 #--------- collect info from command line ---------------#
 args=parser.parse_args()
 
-#-------- read Netcdf file -------------#
-fname = args.inp
+#-------- read Netcdf-1 file -------------#
+fname = args.inp1
 fin = Dataset(fname, mode='r')
+
+#-------- read Netcdf-2 file -------------#
+fname2 = args.inp2
+fin2 = Dataset(fname2, mode='r')
 
 #------ list dimensions name----------------#
 lonname = 'longitude'
@@ -48,10 +58,41 @@ dept= fin.variables[levname][:]
 el_in=fin.variables[el_index][:]
 #variables
 
-var = fin.variables[varname][:]
+# read variables and make difference ----------#
+if varname == 'velocity':
+  #--------- file 1 -------------------#
+  var1_u = fin.variables['u_velocity'][:]
+  var1_v = fin.variables['v_velocity'][:]
+  var1 = np.sqrt(var1_u**2+var1_v**2)
+  #-------- 0 values to nan -----------#
+  var1 = np.where(var1 == 0,np.nan,var1)
+  #--------- file 2 -------------------#  
+  var2_u = fin2.variables['u_velocity'][:]
+  var2_v = fin2.variables['v_velocity'][:]
+  var2 = np.sqrt(var2_u**2+var2_v**2)
+  #-------- 0 values to nan -----------#
+  var2 = np.where(var2 == 0,np.nan,var2)
+  #-------- final var ----------------#
+  var = var1-var2
+  #------------ variable units -------------#
+  var_unit = fin.variables['u_velocity'].units
+else:
+  #-------- var 1 --------------------#
+  var1 = fin.variables[varname][:]
+  #-------- 0 values to nan -----------#
+  var1 = np.where(var1 == 0,np.nan,var1)
+  #------------ var 2 ----------------#
+  var2 = fin2.variables[varname][:]
+  #-------- 0 values to nan -----------#
+  var2 = np.where(var2 == 0,np.nan,var2)
+  #------- final var ------------------#
+  var = var1-var2
+  #------------ variable units -------------#
+  var_unit = fin.variables[varname].units
 
-#------------ variable units -------------#
-var_unit = fin.variables[varname].units
+#-------- change Nan values if necessary ---------#
+if not args.last:
+  np.nan_to_num(var,copy=False,nan=1.e20)
 
 #------------- choose layer -----------#
 lev = args.layer
@@ -69,27 +110,28 @@ tmin= datetime.strptime(args.tmin,'%Y-%m-%d::%H:%M')
 tmax= datetime.strptime(args.tmax,'%Y-%m-%d::%H:%M')
 
 #------------ choose the right colorbar ------------- #
-if varname == 'temperature':
-  cmap = "cmocean_thermal"
-elif varname == 'salinity':
-  cmap = "cmocean_haline"
-  clev = [ 5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38]
-  #--------- debug for salinity colorbar necessary --------------------#
-elif varname == 'total_depth':
-  cmap = "cmocean_deep"
-elif varname == 'water_level':
-  cmap = "cmocean_balance"
+cmap = "cmocean_balance"
 
 #----------- close Netcdf reading ------------- #
 fin.close()
 
 #------------- simulation name --------------#
-name_exp='NBS'
+name_exp= args.name
+
+#------------- yearly mean ------------ #
+#ym = ['2010','2011','2012','2013','2014','2015','2016','2017','2018','2019']
+#ym=['mean']
+ym=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC']
 
 #------------------ time in UTC (maybe need to convert in local time) ----------------------#
 tvalue = num2date(time,units=t_unit,calendar=t_cal)
 str_time = [i.strftime("%Y-%m-%d::%H:%M") for i in tvalue]
 #print(str_time)
+
+# ------- compute root mean square error time series #
+rmse = np.zeros(len(tvalue),float)
+rmse = np.sqrt(np.sum(var**2,axis=1)/(len(var[0,:])))
+print(rmse)
 
 ############################### start plot procedures ##################
 for i in range(len(tvalue)):
@@ -102,20 +144,21 @@ for i in range(len(tvalue)):
     elif tnow > tmax:
         break
 
+    if args.last:
+      #----------- extract the index of the variable at the bottom layer of each elements ---#
+      v=pd.DataFrame(var[i].T).apply(pd.Series.last_valid_index) 
+      vart=np.zeros(len(v),float)
+      for ll in range(len(v)):
+        vart[ll]=var[i,ll,v[ll]]
+
     ##################### file names ###################
     wks_type='png'
     if i < 10:
-        wks = Ngl.open_wks(wks_type,varname+'_00'+str(i))
+        wks = Ngl.open_wks(wks_type,name_exp+"_"+varname+'_00'+str(i))
     elif i < 100:
-        wks = Ngl.open_wks(wks_type,varname+'_0'+str(i))
+        wks = Ngl.open_wks(wks_type,name_exp+"_"+varname+'_0'+str(i))
     elif i >= 100:
-        wks = Ngl.open_wks(wks_type,varname+'_'+str(i))
-
-    ########################## set background and Foreground colors ##############
-    #back                            =Ngl.Resources()
-    #back.wkForegroundColor          =(0.,0.,0.)
-    #back.wkBackgroundColor          =(0.5,0.5,0.5)
-    #Ngl.set_values(wks,back)
+        wks = Ngl.open_wks(wks_type,name_exp+"_"+varname+'_'+str(i))
 
     ########################## set memory maximum #####################
     ws_id = Ngl.get_workspace_id()
@@ -132,14 +175,11 @@ for i in range(len(tvalue)):
     res.cnFillOn                    = True
     res.cnFillMode                  ='AreaFill'
     res.cnLinesOn                   =False
-    if varname != 'salinity':
-      res.cnLevelSelectionMode        ="ManualLevels"
-      res.cnMinLevelValF              =minval
-      res.cnMaxLevelValF              =maxval
-      res.cnLevelSpacingF             =spacing
-    else:
-      res.cnLevelSelectionMode        ="ExplicitLevels"
-      res.cnLevels                    = clev
+    res.cnLevelSelectionMode        ="ManualLevels"
+    #res.cnLevelSelectionMode        ="AutomaticLevels"
+    res.cnMinLevelValF              =minval
+    res.cnMaxLevelValF              =maxval
+    res.cnLevelSpacingF             =spacing
     res.cnLineLabelsOn              = False     #turn off the line labels
     #res.cnLineLabelFontHeightF      = 0.005
     res.cnLineLabelDensityF         = 1
@@ -199,7 +239,12 @@ for i in range(len(tvalue)):
     res.tiMainPosition    = "Center"
     res.tiMainFontHeightF = 0.012
     res.tiMainOffsetYF    = 0.0
-    res.tiMainString        = name_exp+" "+varname+" "+str_time[i]+" depth = "+str(dept[lev])+" m"
+    if not args.last:
+      res.tiMainString        = name_exp+" "+varname+" difference "+str_time[i]+" depth = "+str(dept[lev])+" m"
+      # res.tiMainString        = name_exp+" "+varname+" difference "+ym[i]+" depth = "+str(dept[lev])+" m" 
+    else:
+      res.tiMainString        = name_exp+" "+varname+" difference "+str_time[i]+" bottom"
+      # res.tiMainString        = name_exp+" "+varname+" difference "+ym[i]+" bottom"
     res.tiMainFontThicknessF=5.
 
     res.sfXArray            = lon
@@ -213,13 +258,17 @@ for i in range(len(tvalue)):
     res.lbLabelBarOn       = True
     res.lbLabelsOn         = True
     res.lbOrientation       ='horizontal'
-    res.lbTitleString      = varname+" ("+var_unit+")"
+    res.lbAutoManage	   = False
+    res.lbTitleString      = varname+" difference ("+var_unit+")"
     res.lbTitlePosition    = "Bottom"
     res.lbTitleOffsetF   = -0.1
     res.lbLabelFontHeightF = 0.015
     res.lbTitleFontHeightF = 0.015
+#    res.lbLabelFontHeightF = 0.008
+#    res.lbTitleFontHeightF = 0.008
     res.lbLabelAutoStride    = True
     res.pmLabelBarSide   = "Bottom"
+    res.lbBoxEndCapStyle = "TriangleBothEnds"
 #   res.pmLabelBarOrthogonalPosF=-0.03
 #   res.pmLabelBarParallelPosF  =0.4
 
@@ -228,7 +277,10 @@ for i in range(len(tvalue)):
 
         plot = Ngl.contour_map(wks,var[i][:],res)
     else:
-        plot = Ngl.contour_map(wks,var[i,:,lev],res)
+        if args.last:
+          plot = Ngl.contour_map(wks,vart,res)
+        else:
+          plot = Ngl.contour_map(wks,var[i,:,lev],res)
 
     ###################### draw plot and change frame ##################
     Ngl.draw(plot.base)
